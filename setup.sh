@@ -61,8 +61,12 @@ cat <<'MSG'
 
 === NOVA M3 is installed ===
 Start:
-  nova browser open          # opens the TBP Firefox window (Termux:X11 or VNC display)
-  # -> Log into YOUR Facebook account manually in that window. NOVA never asks for your password.
+  nova browser open          # starts TBP Firefox on virtual display :99
+  pkg install -y x11vnc      # one-time: makes that display visible
+  x11vnc -display :99 -forever -shared -nopw &
+  # -> Open a VNC viewer app (e.g. bVNC), connect to localhost:5900, and log
+  #    into YOUR Facebook account manually in the Firefox window you see.
+  #    NOVA never asks for your password.
   nova session status        # confirm LOGGED_IN
   nova extract --mode hybrid --url https://www.facebook.com/<page-or-profile>
   nova export --format txt   # links land in ~/.nova/exports/

@@ -32,8 +32,14 @@ records from the bundled fixture).
 ## Quick start
 
 ```bash
-nova browser open        # opens TBP's Firefox window (view via Termux:X11 / VNC)
-                         # → log into YOUR Facebook account manually in that window
+nova browser open        # starts TBP's Firefox on virtual display :99 (invisible at first)
+
+# Make the browser visible so you can log in (one-time setup):
+pkg install -y x11vnc
+x11vnc -display :99 -forever -shared -nopw &
+# → open a VNC viewer app on the phone (e.g. bVNC), connect to localhost:5900,
+#   and log into YOUR Facebook account manually in the Firefox window you see.
+
 nova session status      # expect: LOGGED_IN
 nova extract --mode hybrid --url https://www.facebook.com/<page-or-profile-or-group>
 nova export --format txt # → ~/.nova/exports/nova-export-<time>.txt

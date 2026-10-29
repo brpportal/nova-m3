@@ -11,4 +11,4 @@ tokens, and never bypasses login, CAPTCHA, MFA, or checkpoints. The user logs
 in manually inside the browser engine's own browser window.
 """
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"

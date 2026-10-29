@@ -7,7 +7,7 @@ failure.
 | Symptom | Cause / fix |
 |---|---|
 | `tbp command not found` | Termux Browser Pilot not installed. Re-run `bash setup.sh`, or install TBP manually from its repo. |
-| Browser starts but you see no window | TBP runs Firefox on Xvfb. View it with the Termux:X11 app (DISPLAY=:0) or a VNC viewer — see TBP's README for display options. |
+| Browser starts but you see no window | TBP runs Firefox on its own Xvfb display **:99** — it is invisible until you view it. In Termux: `pkg install -y x11vnc` then `x11vnc -display :99 -forever -shared -nopw &`. Then open any VNC viewer app on the phone (e.g. bVNC) and connect to `localhost:5900`. You will see Firefox and can log in with touch/keyboard. (Termux:X11 does NOT work here — it is its own X server, not a viewer for :99.) |
 | `session status` says LOGIN_REQUIRED | Open the browser (`nova browser open`) and log into Facebook manually in the window. NOVA cannot and will not log in for you. |
 | Extraction stops with "auth: … checkpoint" | Facebook wants a verification step. Resolve it manually in the browser window, then re-run extract. |
 | M3 returns 0 candidates but M1 works | Facebook changed its embedded-JSON shape. This is expected over time: hybrid mode keeps M1 results, and `extract_stats` in the logs show M3's rejected counts. |
