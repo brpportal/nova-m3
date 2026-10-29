@@ -41,16 +41,24 @@ class TbpEngine(BrowserEngine):
         self.timeout = timeout
 
     # -- internals ---------------------------------------------------------
-    def _run(self, *args: str) -> dict:
+    def _run(self, *args: str, tbp_timeout: int | None = None) -> dict:
         """Run a tbp command, return the daemon envelope dict.
+
+        `tbp_timeout` is forwarded as tbp's own --timeout (its client waits
+        that long for the daemon; page loads on a phone can be slow, so
+        navigation/content calls get minutes, not the 45s default).
 
         Raises EngineError on spawn failure, timeout, non-zero exit, or an
         envelope with success=false.
         """
+        cmd = [self.binary, *args]
+        if tbp_timeout:
+            cmd += ["--timeout", str(tbp_timeout)]
+        cmd.append("--json")
         try:
             proc = subprocess.run(
-                [self.binary, *args, "--json"],
-                capture_output=True, text=True, timeout=self.timeout,
+                cmd, capture_output=True, text=True,
+                timeout=(tbp_timeout + 30) if tbp_timeout else self.timeout,
             )
         except FileNotFoundError:
             raise EngineError(
@@ -107,14 +115,33 @@ class TbpEngine(BrowserEngine):
         """Raw TBP status data (pid, browser, url, title, uptime)."""
         return self._data(self._run("status"))
 
-    def navigate(self, url: str) -> None:
-        self._run("goto", url)
+    def navigate(self, url: str) -> str | None:
+        """Navigate; returns a warning string if the goto command itself
+        timed out but the page demonstrably loaded anyway (the tbp client
+        gives up waiting before a slow phone browser finishes, while the
+        navigation continues in the browser). Raises on real failures."""
+        warning = None
+        try:
+            self._run("goto", url, tbp_timeout=180)
+        except EngineError as exc:
+            current = ""
+            try:
+                current = str(self.status_data().get("url", ""))
+            except EngineError:
+                pass
+            target_hint = url.rstrip("/").rsplit("/", 1)[-1]
+            if current and target_hint and target_hint in current:
+                warning = (f"goto command timed out ({exc}) but the browser "
+                           f"is on {current} — continuing")
+            else:
+                raise
         current = self.current_url()
         if "/login" in current or "checkpoint" in current:
             raise AuthRequiredError(
                 f"Facebook is asking for login/verification ({current}). "
                 "Log in manually in the browser window, then resume."
             )
+        return warning
 
     def current_url(self) -> str:
         data = self._data(self._run("eval", "window.location.href"))
@@ -123,14 +150,21 @@ class TbpEngine(BrowserEngine):
         return str(self.status_data().get("url", ""))
 
     def page_html(self) -> str:
-        data = self._data(self._run("eval", "document.documentElement.outerHTML"))
+        # Prefer tbp's dedicated html command; fall back to a raw eval.
+        data = self._data(self._run("html", tbp_timeout=180))
+        html = data.get("html")
+        if html:
+            return str(html)
+        data = self._data(self._run(
+            "eval", "document.documentElement.outerHTML", tbp_timeout=180))
         return str(data.get("result", ""))
 
     def eval_js(self, expression: str):
-        return self._data(self._run("eval", expression)).get("result")
+        return self._data(self._run("eval", expression, tbp_timeout=120)).get("result")
 
     def scroll_down(self, pixels: int = 800) -> None:
-        self._run("scroll", "--down", "--amount", str(int(pixels)))
+        self._run("scroll", "--down", "--amount", str(int(pixels)),
+                  tbp_timeout=60)
 
     def session_storage_hint(self) -> str:
         return ("TBP keeps its Firefox profile and auto-saved cookies under "

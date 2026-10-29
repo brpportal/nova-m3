@@ -32,7 +32,17 @@ def out(obj):
 
 
 def main(argv):
-    args = [a for a in argv if a != "--json"]
+    args = []
+    skip_next = False
+    for a in argv:
+        if skip_next:
+            skip_next = False
+            continue
+        if a == "--timeout":
+            skip_next = True
+            continue
+        if a != "--json":
+            args.append(a)
     state = load()
     cmd = args[0] if args else ""
     if cmd == "status":
@@ -56,7 +66,14 @@ def main(argv):
     if cmd == "goto":
         state["url"] = args[1]
         save(state)
-        out({"id": 1, "success": True, "data": {}})
+        if os.environ.get("FAKE_TBP_GOTO_TIMEOUT"):
+            # Simulates the field case: client timed out, page still loaded.
+            out({"success": False, "error": "Command timed out"})
+        else:
+            out({"id": 1, "success": True, "data": {}})
+        return 0
+    if cmd == "html":
+        out({"id": 1, "success": True, "data": {"html": HTML, "truncated": False}})
         return 0
     if cmd == "eval":
         expr = args[1]

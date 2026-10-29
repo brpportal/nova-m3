@@ -50,6 +50,17 @@ class TestTbpEngineEnvelope(unittest.TestCase):
         state, _ = check_session(self.engine)
         self.assertEqual(state, LOGGED_IN)
 
+    def test_navigate_tolerates_goto_timeout_when_page_loaded(self):
+        os.environ["FAKE_TBP_GOTO_TIMEOUT"] = "1"
+        try:
+            warning = self.engine.navigate("https://www.facebook.com/SomePage")
+        finally:
+            del os.environ["FAKE_TBP_GOTO_TIMEOUT"]
+        self.assertIsNotNone(warning)
+        self.assertIn("timed out", warning)
+        self.assertEqual(self.engine.current_url(),
+                         "https://www.facebook.com/SomePage")
+
 
 if __name__ == "__main__":
     unittest.main()

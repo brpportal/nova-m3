@@ -115,7 +115,9 @@ def _run_extract(engine: BrowserEngine, cfg, *, mode: str, url: str | None,
     try:
         if url:
             print(f"Target page: {url}")
-            engine.navigate(url)
+            warning = engine.navigate(url)
+            if warning:
+                print(f"Note: {warning}")
         state, detail = check_session(engine)
         print(f"Session: {state} — {detail}")
         if state in ("LOGIN_REQUIRED", "CHECKPOINT"):
