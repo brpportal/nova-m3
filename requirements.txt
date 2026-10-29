@@ -1,0 +1,5 @@
+# NOVA M3 core has NO third-party Python dependencies — standard library only.
+# The browser engine (Termux Browser Pilot) has its own requirements,
+# handled by setup.sh:
+#   - Firefox mode (default): no pip packages needed by TBP
+#   - Chromium mode (optional): pip install "websockets>=12"
