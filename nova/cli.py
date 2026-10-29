@@ -164,8 +164,13 @@ def cmd_extract(cfg, args) -> int:
         print(f"Engine unavailable: {reason}")
         return 1
     if not engine.is_running():
-        print("Browser is not running. Start it first: nova browser open")
-        return 1
+        # TBP's own client auto-starts its daemon on any command, and its
+        # profile keeps the login — so start instead of refusing. (On a
+        # phone the daemon routinely dies between sessions: Android reaps
+        # background processes, and a crashed page load can take it down.)
+        print("Browser was not running — starting it now "
+              "(your Facebook login is kept in the browser profile).")
+        engine.start()
     try:
         return _run_extract(engine, cfg, mode=args.mode, url=args.url,
                             limit=args.limit)
