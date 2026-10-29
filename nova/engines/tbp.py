@@ -1,9 +1,16 @@
 """Termux Browser Pilot engine (PRIMARY).
 
 Drives the real `tbp` CLI (github.com/salviz/termux-browser-pilot) as a
-subprocess. Verified against TBP v0.17.1's CLI surface:
-  tbp status | start | stop | goto URL | html | eval "JS" | scroll --amount N
-All commands accept --json for structured output.
+subprocess. Verified against TBP v0.17.1's source (cli.py + src/daemon.py):
+
+- Every daemon-backed command answers `--json` with the daemon envelope:
+      {"id": 1, "success": true,  "data": {...}}
+      {"id": 1, "success": false, "error": "..."}
+  Note: failures can arrive with process exit code 0, so the envelope's
+  "success" flag — not the exit code — decides success.
+- `tbp status` data: {"pid", "browser", "url", "title", "uptime"};
+  with no daemon: {"success": false, "error": "No daemon running"}.
+- `tbp eval` data: {"result": <value>}.
 
 The user logs into Facebook manually in TBP's real Firefox window. TBP keeps
 its own persistent profile under ~/.tbp (its documented storage); NOVA never
@@ -34,10 +41,15 @@ class TbpEngine(BrowserEngine):
         self.timeout = timeout
 
     # -- internals ---------------------------------------------------------
-    def _run(self, *args: str, expect_json: bool = True):
+    def _run(self, *args: str) -> dict:
+        """Run a tbp command, return the daemon envelope dict.
+
+        Raises EngineError on spawn failure, timeout, non-zero exit, or an
+        envelope with success=false.
+        """
         try:
             proc = subprocess.run(
-                [self.binary, *args, "--json"] if expect_json else [self.binary, *args],
+                [self.binary, *args, "--json"],
                 capture_output=True, text=True, timeout=self.timeout,
             )
         except FileNotFoundError:
@@ -49,14 +61,26 @@ class TbpEngine(BrowserEngine):
         except subprocess.TimeoutExpired:
             raise EngineError(f"tbp {' '.join(args)} timed out after {self.timeout}s")
         out = (proc.stdout or "").strip()
-        if proc.returncode != 0:
-            raise EngineError(f"tbp {' '.join(args)} failed: {(proc.stderr or out)[:300]}")
-        if not expect_json:
-            return out
-        try:
-            return json.loads(out) if out else {}
-        except ValueError:
-            return {"raw": out}
+        envelope: dict = {}
+        if out:
+            try:
+                parsed = json.loads(out)
+                if isinstance(parsed, dict):
+                    envelope = parsed
+            except ValueError:
+                envelope = {"raw": out}
+        if isinstance(envelope, dict) and envelope.get("success") is False:
+            raise EngineError(
+                f"tbp {' '.join(args)}: {envelope.get('error', 'unknown error')}")
+        if proc.returncode != 0 and not envelope:
+            raise EngineError(
+                f"tbp {' '.join(args)} failed: {(proc.stderr or out)[:300]}")
+        return envelope
+
+    @staticmethod
+    def _data(envelope: dict) -> dict:
+        data = envelope.get("data")
+        return data if isinstance(data, dict) else {}
 
     # -- interface ----------------------------------------------------------
     def available(self) -> tuple[bool, str]:
@@ -74,12 +98,14 @@ class TbpEngine(BrowserEngine):
 
     def is_running(self) -> bool:
         try:
-            data = self._run("status")
+            envelope = self._run("status")
         except EngineError:
             return False
-        if isinstance(data, dict):
-            return bool(data.get("running", data.get("status") == "running"))
-        return False
+        return envelope.get("success") is True
+
+    def status_data(self) -> dict:
+        """Raw TBP status data (pid, browser, url, title, uptime)."""
+        return self._data(self._run("status"))
 
     def navigate(self, url: str) -> None:
         self._run("goto", url)
@@ -91,22 +117,17 @@ class TbpEngine(BrowserEngine):
             )
 
     def current_url(self) -> str:
-        data = self._run("eval", "window.location.href")
-        if isinstance(data, dict):
-            return str(data.get("result", data.get("value", "")))
-        return str(data)
+        data = self._data(self._run("eval", "window.location.href"))
+        if data.get("result"):
+            return str(data["result"])
+        return str(self.status_data().get("url", ""))
 
     def page_html(self) -> str:
-        data = self._run("eval", "document.documentElement.outerHTML")
-        if isinstance(data, dict):
-            return str(data.get("result", data.get("value", "")))
-        return str(data)
+        data = self._data(self._run("eval", "document.documentElement.outerHTML"))
+        return str(data.get("result", ""))
 
     def eval_js(self, expression: str):
-        data = self._run("eval", expression)
-        if isinstance(data, dict):
-            return data.get("result", data.get("value"))
-        return data
+        return self._data(self._run("eval", expression)).get("result")
 
     def scroll_down(self, pixels: int = 800) -> None:
         self._run("scroll", "--down", "--amount", str(int(pixels)))
